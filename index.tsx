@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
@@ -75,6 +76,11 @@ const Spinner: React.FC = () => (
     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    </svg>
+);
+const PowerIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
     </svg>
 );
 const ResultCard: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
@@ -222,7 +228,7 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
 
             const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: { parts: [imagePart, {text: "حلل الصورة بناء على التعليمات."}] },
+              contents: [{ parts: [imagePart, {text: "حلل الصورة بناء على التعليمات."}] }],
               config: { systemInstruction: systemInstruction, responseMimeType: "application/json" }
             });
             
@@ -365,7 +371,7 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: { parts: [{ text: prompt }] },
+                contents: [{ parts: [{ text: prompt }] }],
                 config: {
                     systemInstruction: systemInstruction,
                     responseMimeType: "application/json"
@@ -523,6 +529,13 @@ const App: React.FC = () => {
         localStorage.removeItem('subscriptionStatus');
         setCurrentPage('account');
     };
+
+    const handleExit = () => {
+        // Note: window.close() may not work in all browsers or contexts.
+        // It is mainly for windows opened by script.
+        // For a Capacitor app, this can be replaced with a native call like `App.exitApp();` from '@capacitor/app'
+        window.close();
+    };
     
     const TabButton: React.FC<{
         pageName: Page;
@@ -549,7 +562,15 @@ const App: React.FC = () => {
     return (
         <div className="min-h-screen text-white p-4">
             <div className="absolute inset-0 -z-10 h-full w-full bg-[#0D1117] bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
-            <header className="text-center mb-6">
+            <header className="text-center mb-6 relative">
+                 <button
+                    onClick={handleExit}
+                    className="absolute top-0 left-0 text-gray-500 hover:text-red-500 transition-colors p-2 rounded-full active:bg-gray-700"
+                    aria-label="إغلاق التطبيق"
+                    title="إغلاق التطبيق"
+                >
+                    <PowerIcon />
+                </button>
                 <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-blue-500">
                     محلل الشموع الذكي
                 </h1>
