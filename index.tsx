@@ -12,7 +12,12 @@ type SubscriptionStatus = {
 type AnalysisResult = {
     pattern: string;
     trend: string;
-    reliability: string;
+    recommendation: string;
+    entryPrice: string;
+    stopLoss: string;
+    takeProfit: string;
+    detailedAnalysis: string;
+    notes: string;
 };
 
 // --- Helper Components & Icons ---
@@ -83,6 +88,17 @@ const PowerIcon: React.FC = () => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
     </svg>
 );
+const AnalysisIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+    </svg>
+);
+const NotesIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+    </svg>
+);
+
 const ResultCard: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
     <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700 rounded-lg p-4 flex items-start space-x-4 space-x-reverse">
         <div className="flex-shrink-0 h-12 w-12 rounded-full bg-gray-700 flex items-center justify-center text-teal-400">
@@ -218,17 +234,23 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const imagePart = await fileToGenerativePart(image);
-            const systemInstruction = `أنت خبير في تحليل الرسوم البيانية للعملات الرقمية والأسواق المالية، متخصص في أنماط الشموع اليابانية. مهمتك هي تحليل الصورة المقدمة وتحديد ما يلي:
-1.  **نمط الشمعة (Pattern):** حدد اسم نمط الشمعة الظاهر (مثال: شمعة المطرقة، الابتلاع الشرائي، نجمة المساء).
-2.  **الاتجاه المتوقع (Trend):** بناءً على النمط، حدد ما إذا كان الاتجاه المتوقع صعوديًا (Bullish) أو هبوطيًا (Bearish) أو محايدًا (Neutral).
-3.  **مدى الموثوقية (Reliability):** قم بتقييم مدى موثوقية هذا النمط (مثال: عالية، متوسطة، منخفضة).
+            const systemInstruction = `أنت خبير تحليل فني محترف في أسواق العملات الرقمية، متخصص في استراتيجيات التداول القائمة على أنماط الشموع اليابانية. مهمتك هي تحليل صورة الرسم البياني المقدمة وتقديم توصية تداول كاملة.
 
 يجب أن تكون إجابتك بتنسيق JSON حصريًا، بالشكل التالي:
-{"pattern": "اسم النمط", "trend": "الاتجاه المتوقع", "reliability": "مدى الموثوقية"}`;
+{
+  "pattern": "اسم نمط الشموع الرئيسي الذي تم تحديده (مثال: مطرقة، ابتلاع هبوطي).",
+  "trend": "الاتجاه العام المتوقع بناءً على النمط (صعودي، هبوطي, محايد).",
+  "recommendation": "التوصية الصريحة (شراء، بيع, احتفاظ).",
+  "entryPrice": "سعر الدخول المقترح. كن محددًا قدر الإمكان (مثال: 'عند سعر الإغلاق الحالي' أو 'عند اختراق مستوى 1.2345').",
+  "stopLoss": "سعر وقف الخسارة لحماية رأس المال.",
+  "takeProfit": "سعر جني الأرباح كهدف أول.",
+  "detailedAnalysis": "تحليل تفصيلي يشرح منطق التوصية، مع الإشارة إلى النمط، حجم التداول (إن وجد)، ومؤشرات أخرى ظاهرة.",
+  "notes": "ملاحظات هامة وتحذيرات خاصة بهذه التوصية فقط (مثال: 'التوصية عالية المخاطر' أو 'تأكد من وجود تأكيد إضافي'). يجب أن تكون الملاحظة مرتبطة مباشرة بالتحليل المقدم ولا تتضمن إخلاء مسؤولية عام."
+}`;
 
             const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: [{ parts: [imagePart, {text: "حلل الصورة بناء على التعليمات."}] }],
+              contents: { parts: [imagePart, {text: "حلل الصورة بناء على التعليمات وقدم توصية تداول كاملة."}] },
               config: { systemInstruction: systemInstruction, responseMimeType: "application/json" }
             });
             
@@ -310,16 +332,50 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
 
             {result && (
                 <div className="mt-8 space-y-4">
-                    <h2 className="text-xl font-bold text-center text-white">نتائج التحليل</h2>
-                    <ResultCard icon={<ChartIcon />} title="نمط الشمعة">
-                        {result.pattern}
+                    <h2 className="text-2xl font-bold text-center text-white mb-6">نتائج التحليل</h2>
+
+                    <div className={`rounded-lg p-4 text-center border-2 ${
+                        result.recommendation.includes('شراء') ? 'bg-green-500/10 border-green-500' :
+                        result.recommendation.includes('بيع') ? 'bg-red-500/10 border-red-500' :
+                        'bg-gray-500/10 border-gray-500'
+                    }`}>
+                        <h3 className="text-lg font-bold text-gray-300">التوصية الرئيسية</h3>
+                        <p className={`text-2xl font-extrabold ${
+                            result.recommendation.includes('شراء') ? 'text-green-400' :
+                            result.recommendation.includes('بيع') ? 'text-red-400' :
+                            'text-yellow-400'
+                        }`}>
+                            {result.recommendation}
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+                        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                            <h4 className="font-bold text-teal-400">سعر الدخول</h4>
+                            <p data-selectable="true" className="text-white text-lg font-mono mt-1">{result.entryPrice}</p>
+                        </div>
+                        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                            <h4 className="font-bold text-red-400">وقف الخسارة</h4>
+                            <p data-selectable="true" className="text-white text-lg font-mono mt-1">{result.stopLoss}</p>
+                        </div>
+                        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+                            <h4 className="font-bold text-green-400">جني الأرباح</h4>
+                            <p data-selectable="true" className="text-white text-lg font-mono mt-1">{result.takeProfit}</p>
+                        </div>
+                    </div>
+                    
+                    <ResultCard icon={<AnalysisIcon />} title="التحليل التفصيلي">
+                        {result.detailedAnalysis}
                     </ResultCard>
-                    <ResultCard icon={<TargetIcon />} title="الاتجاه المتوقع">
-                        {result.trend}
+                    <ResultCard icon={<ChartIcon />} title="النمط المحدد">
+                        {`${result.pattern} - (${result.trend})`}
                     </ResultCard>
-                    <ResultCard icon={<ShieldIcon />} title="مدى الموثوقية">
-                        {result.reliability}
+                    <ResultCard icon={<NotesIcon />} title="ملاحظات هامة">
+                        {result.notes}
                     </ResultCard>
+                    <p className="text-xs text-gray-500 text-center pt-2">
+                        إخلاء مسؤولية: التحليل مُقدم بواسطة الذكاء الاصطناعي وليس نصيحة مالية. قم دائمًا بإجراء أبحاثك الخاصة.
+                    </p>
                 </div>
             )}
         </div>
@@ -371,7 +427,7 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: [{ parts: [{ text: prompt }] }],
+                contents: prompt,
                 config: {
                     systemInstruction: systemInstruction,
                     responseMimeType: "application/json"
