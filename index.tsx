@@ -1,7 +1,10 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
+
+// --- Centralized AI Client ---
+// For robustness and efficiency, we create a single instance of the AI client.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // --- Types ---
 type Page = 'analyzer' | 'account';
@@ -232,7 +235,6 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
         setResult(null);
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const imagePart = await fileToGenerativePart(image);
             const systemInstruction = `أنت خبير تحليل فني محترف في أسواق العملات الرقمية، متخصص في استراتيجيات التداول القائمة على أنماط الشموع اليابانية. مهمتك هي تحليل صورة الرسم البياني المقدمة وتقديم توصية تداول كاملة.
 
@@ -420,7 +422,6 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
         setStatusMessage("جاري التحقق من معاملتك على شبكة البلوك تشين...");
 
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             const systemInstruction = `أنت نظام آلي للتحقق من معاملات البلوك تشين (TRC20). مهمتك هي التحقق من صحة بيانات المعاملة المقدمة. تحقق من أن "معرف المعاملة" (TxID) يبدو صحيحًا (عادة 64 حرفًا سداسيًا عشريًا) وأن البريد الإلكتروني بتنسيق صحيح. قم بمحاكاة التحقق من المعاملة. إذا كانت البيانات تبدو صحيحة، اعتبرها ناجحة. إذا كان معرف المعاملة قصيرًا جدًا أو غير صالح، فاعتبرها فاشلة. يجب أن تكون إجابتك بتنسيق JSON حصريًا، بالشكل التالي: {"isValid": boolean, "reason": "رسالة توضيحية باللغة العربية"}. أمثلة للأسباب: "تم التحقق من المعاملة بنجاح"، "معرف المعاملة يبدو غير صالح"، "الرجاء التأكد من إدخال معرف المعاملة الصحيح".`;
 
             const prompt = `الرجاء التحقق من المعاملة بالبيانات التالية: البريد الإلكتروني: ${email}, معرف المعاملة: ${txId}`;
