@@ -1,0 +1,30 @@
+{
+  "short_name": "محلل الشموع",
+  "name": "محلل الشموع الذكي",
+  "description": "منصة عربية لتحليل أنماط الشموع اليابانية للعملات الرقمية باستخدام الذكاء الاصطناعي، مع أدوات لإدارة الاشتراكات.",
+  "lang": "ar",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0D1117",
+  "background_color": "#0D1117",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "بدء تحليل جديد",
+      "short_name": "تحليل",
+      "description": "افتح محلل الشموع لتحليل رسم بياني جديد.",
+      "url": "/?action=analyze"
+    }
+  ]
+}

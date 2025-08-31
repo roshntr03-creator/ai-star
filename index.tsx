@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Chat } from "@google/genai";
 
 // --- Centralized AI Client ---
 // For robustness and efficiency, we create a single instance of the AI client.
@@ -21,6 +22,18 @@ type AnalysisResult = {
     takeProfit: string;
     detailedAnalysis: string;
     notes: string;
+};
+type ChatMessage = {
+    role: 'user' | 'model';
+    text: string;
+};
+
+
+// --- Helper Functions ---
+const triggerHapticFeedback = () => {
+    if (navigator.vibrate) {
+        navigator.vibrate(50); // A short, subtle vibration
+    }
 };
 
 // --- Helper Components & Icons ---
@@ -75,20 +88,21 @@ const UserIcon: React.FC = () => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
     </svg>
 );
-const UploadIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+const CameraIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+);
+const GalleryIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
     </svg>
 );
 const Spinner: React.FC = () => (
     <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-    </svg>
-);
-const PowerIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636a9 9 0 1012.728 0M12 3v9" />
     </svg>
 );
 const AnalysisIcon: React.FC = () => (
@@ -178,7 +192,10 @@ const LandingPage: React.FC<{ onStart: () => void }> = ({ onStart }) => (
 
             <div className="mt-12 animate-fade-in-up animation-delay-700">
                  <button
-                    onClick={onStart}
+                    onClick={() => {
+                        triggerHapticFeedback();
+                        onStart();
+                    }}
                     className="bg-teal-500 hover:bg-teal-600 text-white font-bold py-4 px-10 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 active:scale-95 text-xl shadow-lg shadow-teal-500/20"
                 >
                     ابدأ التحليل الآن
@@ -190,6 +207,72 @@ const LandingPage: React.FC<{ onStart: () => void }> = ({ onStart }) => (
 
 
 // --- Main Components ---
+const ChatInterface: React.FC<{
+    messages: ChatMessage[];
+    isLoading: boolean;
+    onSendMessage: (message: string) => void;
+}> = ({ messages, isLoading, onSendMessage }) => {
+    const [input, setInput] = useState('');
+    const messagesEndRef = useRef<null | HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    useEffect(scrollToBottom, [messages]);
+
+    const handleSend = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (input.trim() && !isLoading) {
+            triggerHapticFeedback();
+            onSendMessage(input.trim());
+            setInput('');
+        }
+    };
+
+    return (
+        <div className="mt-6 bg-gray-900/50 border border-gray-700 rounded-lg p-4 animate-fade-in-up">
+            <h3 className="text-lg font-bold text-teal-400 mb-4 text-center">الدردشة مع المحلل</h3>
+            <div className="h-64 overflow-y-auto pr-2 space-y-4 mb-4" style={{ scrollbarWidth: 'thin' }}>
+                {messages.map((msg, index) => (
+                    <div key={index} className={`flex items-end gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-xs md:max-w-md px-4 py-2 rounded-xl ${
+                            msg.role === 'user' ? 'bg-teal-600 text-white rounded-br-none' : 'bg-gray-700 text-gray-200 rounded-bl-none'
+                        }`}>
+                            <p className="text-sm" data-selectable="true">{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
+                {isLoading && (
+                    <div className="flex justify-start">
+                         <div className="bg-gray-700 px-4 py-2 rounded-xl inline-flex items-center space-x-2 space-x-reverse rounded-bl-none">
+                            <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0s' }}></span>
+                            <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></span>
+                            <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></span>
+                        </div>
+                    </div>
+                )}
+                <div ref={messagesEndRef} />
+            </div>
+            <form onSubmit={handleSend} className="flex gap-2">
+                <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="اسأل عن التحليل..."
+                    className="flex-1 bg-gray-700 border border-gray-600 rounded-lg py-2.5 px-4 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    disabled={isLoading}
+                />
+                <button type="submit" disabled={isLoading || !input.trim()} className="bg-teal-500 text-white font-bold p-3 rounded-lg flex items-center justify-center disabled:bg-gray-500 hover:bg-teal-600 transition-colors active:scale-95">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.428A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+    );
+};
+
 const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: () => void }> = ({ isSubscribed, onSubscribeClick }) => {
     const [image, setImage] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
@@ -197,6 +280,14 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [chatSession, setChatSession] = useState<Chat | null>(null);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [isChatLoading, setIsChatLoading] = useState(false);
+
+    const resetChat = () => {
+        setChatSession(null);
+        setChatMessages([]);
+    };
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -205,34 +296,58 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
             setPreview(URL.createObjectURL(file));
             setResult(null);
             setError(null);
+            resetChat();
+        }
+        event.target.value = '';
+    };
+
+    const handleTakePhoto = () => {
+        triggerHapticFeedback();
+        if (fileInputRef.current) {
+            fileInputRef.current.setAttribute('capture', 'environment');
+            fileInputRef.current.click();
+        }
+    };
+    
+    const handleChooseFromLibrary = () => {
+        triggerHapticFeedback();
+        if (fileInputRef.current) {
+            fileInputRef.current.removeAttribute('capture');
+            fileInputRef.current.click();
         }
     };
 
-    const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const file = event.dataTransfer.files?.[0];
-        if (file && file.type.startsWith('image/')) {
-            setImage(file);
-            setPreview(URL.createObjectURL(file));
-            setResult(null);
-            setError(null);
+    const handleSendChatMessage = async (message: string) => {
+        if (!chatSession) return;
+
+        const userMessage: ChatMessage = { role: 'user', text: message };
+        setChatMessages(prev => [...prev, userMessage]);
+        setIsChatLoading(true);
+
+        try {
+            const response = await chatSession.sendMessage({ message });
+            const modelMessage: ChatMessage = { role: 'model', text: response.text };
+            setChatMessages(prev => [...prev, modelMessage]);
+        } catch (err) {
+            console.error("Chat error:", err);
+            const errorMessage: ChatMessage = { role: 'model', text: "عذراً، حدث خطأ ما. حاول مرة أخرى." };
+            setChatMessages(prev => [...prev, errorMessage]);
+        } finally {
+            setIsChatLoading(false);
         }
     };
 
-    const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-        event.preventDefault();
-        event.stopPropagation();
-    };
 
     const handleSubmit = async () => {
         if (!image) {
             setError("الرجاء رفع صورة أولاً.");
             return;
         }
+        triggerHapticFeedback();
         setLoading(true);
         setError(null);
         setResult(null);
+        resetChat();
 
         try {
             const imagePart = await fileToGenerativePart(image);
@@ -258,6 +373,22 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
             
             const parsedResult = JSON.parse(response.text);
             setResult(parsedResult);
+
+            const chat = ai.chats.create({
+                model: 'gemini-2.5-flash',
+                config: {
+                    systemInstruction: `أنت خبير تحليل فني مساعد. لقد قمت للتو بتحليل صورة وقدمت النتائج التالية بصيغة JSON: ${JSON.stringify(parsedResult)}. مهمتك الآن هي الإجابة على أسئلة المستخدم المتابعة حول هذا التحليل المحدد. كن موجزًا ومفيدًا ومباشرًا في إجاباتك. لا تذكر أنك AI أو أنك مساعد. خاطب المستخدم مباشرة.`
+                }
+            });
+            setChatSession(chat);
+
+            setTimeout(() => {
+                setChatMessages([{
+                    role: 'model',
+                    text: `تم تحديد نمط "${parsedResult.pattern}". هل لديك أي أسئلة بخصوص هذا التحليل؟`
+                }]);
+            }, 500);
+
         } catch (err) {
             console.error(err);
             setError("حدث خطأ أثناء تحليل الصورة. الرجاء المحاولة مرة أخرى.");
@@ -272,7 +403,10 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
                 <h2 className="text-xl font-bold text-white mb-3">ميزة حصرية للمشتركين</h2>
                 <p className="text-gray-400 mb-6">للوصول إلى محلل الشموع المتقدم، يرجى تفعيل اشتراكك.</p>
                 <button
-                    onClick={onSubscribeClick}
+                    onClick={() => {
+                        triggerHapticFeedback();
+                        onSubscribeClick();
+                    }}
                     className="bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-8 rounded-lg transition duration-300 ease-in-out transform hover:scale-105 active:scale-95 text-lg"
                 >
                     الاشتراك الآن
@@ -283,42 +417,50 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
 
     return (
         <div>
-            <div
-                className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center cursor-pointer transition-colors hover:border-teal-500 hover:bg-gray-800/50"
-                onClick={() => fileInputRef.current?.click()}
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-            >
-                <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    className="hidden"
-                    accept="image/*"
-                />
-                {preview ? (
-                    <div className="relative group">
-                        <img src={preview} alt="معاينة الرسم البياني" className="mx-auto max-h-60 rounded-lg" />
-                        <div
-                            className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1.5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setPreview(null);
-                                setImage(null);
-                                setResult(null);
-                            }}
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </div>
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                accept="image/*"
+            />
+            {preview ? (
+                <div className="relative group">
+                    <img src={preview} alt="معاينة الرسم البياني" className="mx-auto max-h-60 rounded-lg" />
+                    <div
+                        className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1.5 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            triggerHapticFeedback();
+                            setPreview(null);
+                            setImage(null);
+                            setResult(null);
+                            resetChat();
+                        }}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </div>
-                ) : (
-                    <div className="flex flex-col items-center py-4">
-                        <UploadIcon />
-                        <p className="mt-4 text-gray-400 text-base">انقر لرفع صورة الرسم البياني</p>
-                        <p className="text-sm text-gray-500">أو اسحبها وأفلتها هنا</p>
-                    </div>
-                )}
-            </div>
+                </div>
+            ) : (
+                 <div className="grid grid-cols-2 gap-4">
+                    <button
+                        onClick={handleTakePhoto}
+                        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer transition-colors hover:border-teal-500 hover:bg-gray-800/50 flex flex-col items-center justify-center space-y-3 aspect-square"
+                        aria-label="التقط صورة"
+                    >
+                        <CameraIcon />
+                        <span className="text-gray-300 font-medium">التقط صورة</span>
+                    </button>
+                    <button
+                        onClick={handleChooseFromLibrary}
+                        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer transition-colors hover:border-teal-500 hover:bg-gray-800/50 flex flex-col items-center justify-center space-y-3 aspect-square"
+                        aria-label="اختر من المعرض"
+                    >
+                        <GalleryIcon />
+                        <span className="text-gray-300 font-medium">اختر من المعرض</span>
+                    </button>
+                </div>
+            )}
 
             <div className="mt-6">
                 <button
@@ -378,6 +520,13 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
                     <p className="text-xs text-gray-500 text-center pt-2">
                         إخلاء مسؤولية: التحليل مُقدم بواسطة الذكاء الاصطناعي وليس نصيحة مالية. قم دائمًا بإجراء أبحاثك الخاصة.
                     </p>
+                    {chatSession && (
+                        <ChatInterface
+                            messages={chatMessages}
+                            isLoading={isChatLoading}
+                            onSendMessage={handleSendChatMessage}
+                        />
+                    )}
                 </div>
             )}
         </div>
@@ -395,12 +544,14 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
     const walletAddress = "TNZeskfbAWXWjKE5sWca8m2MCyX6wEpxsU";
 
     const copyToClipboard = () => {
+        triggerHapticFeedback();
         navigator.clipboard.writeText(walletAddress);
         setIsCopied(true);
         setTimeout(() => setIsCopied(false), 2000);
     };
 
     const handleActivate = async () => {
+        triggerHapticFeedback();
         // Admin Bypass
         if (email.toLowerCase() === 'admin@example.com') {
             if (!txId) {
@@ -542,7 +693,10 @@ const AccountPage: React.FC<{ email: string, onLogout: () => void }> = ({ email,
             </p>
             <p data-selectable="true" className="font-mono bg-gray-900 rounded-md p-3 text-teal-400 break-all">{email}</p>
             <button
-                onClick={onLogout}
+                onClick={() => {
+                    triggerHapticFeedback();
+                    onLogout();
+                }}
                 className="w-full bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold py-3 px-4 rounded-lg transition-colors text-lg"
             >
                 تسجيل الخروج
@@ -570,6 +724,26 @@ const App: React.FC = () => {
             console.error("Failed to parse subscription status from localStorage", error);
             setCurrentPage('account');
         }
+
+        // --- Service Worker Registration for Offline Capability ---
+        if ('serviceWorker' in navigator) {
+            // Defer registration until after the page has fully loaded.
+            // This ensures that window.location is stable and avoids race conditions,
+            // which can cause errors in sandboxed environments.
+            window.addEventListener('load', () => {
+                try {
+                    // Construct an absolute URL to the service worker file using window.location as the base.
+                    // This resolves the 'Invalid URL' TypeError caused by `import.meta.url` in this environment
+                    // and prevents origin mismatch errors by ensuring the correct protocol and host are used.
+                    const swUrl = new URL('sw.js', window.location.href);
+                    navigator.serviceWorker.register(swUrl)
+                        .then(registration => console.log('Service Worker registered successfully with scope: ', registration.scope))
+                        .catch(error => console.error('Service Worker registration failed:', error));
+                } catch (error) {
+                    console.error('Error constructing SW URL or registering SW:', error);
+                }
+            });
+        }
     }, []);
 
     const handleSubscriptionSuccess = (email: string) => {
@@ -586,13 +760,6 @@ const App: React.FC = () => {
         localStorage.removeItem('subscriptionStatus');
         setCurrentPage('account');
     };
-
-    const handleExit = () => {
-        // Note: window.close() may not work in all browsers or contexts.
-        // It is mainly for windows opened by script.
-        // For a Capacitor app, this can be replaced with a native call like `App.exitApp();` from '@capacitor/app'
-        window.close();
-    };
     
     const TabButton: React.FC<{
         pageName: Page;
@@ -600,7 +767,10 @@ const App: React.FC = () => {
         children: React.ReactNode;
     }> = ({ pageName, icon, children }) => (
          <button
-            onClick={() => setCurrentPage(pageName)}
+            onClick={() => {
+                triggerHapticFeedback();
+                setCurrentPage(pageName);
+            }}
             className={`flex-1 flex items-center justify-center space-x-2 space-x-reverse py-3 px-4 text-sm font-medium rounded-t-lg transition-colors ${
                 currentPage === pageName
                     ? 'bg-gray-800 text-teal-400 border-b-2 border-teal-400'
@@ -620,14 +790,6 @@ const App: React.FC = () => {
         <div className="min-h-screen text-white p-4">
             <div className="absolute inset-0 -z-10 h-full w-full bg-[#0D1117] bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
             <header className="text-center mb-6 relative">
-                 <button
-                    onClick={handleExit}
-                    className="absolute top-0 left-0 text-gray-500 hover:text-red-500 transition-colors p-2 rounded-full active:bg-gray-700"
-                    aria-label="إغلاق التطبيق"
-                    title="إغلاق التطبيق"
-                >
-                    <PowerIcon />
-                </button>
                 <h1 className="text-3xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-blue-500">
                     محلل الشموع الذكي
                 </h1>
