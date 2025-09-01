@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import { GoogleGenAI, Chat } from "@google/genai";
+import { GoogleGenAI, Chat, Type } from "@google/genai";
 
 // --- Centralized AI Client ---
 // For robustness and efficiency, we create a single instance of the AI client.
@@ -351,24 +351,31 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
 
         try {
             const imagePart = await fileToGenerativePart(image);
-            const systemInstruction = `أنت خبير تحليل فني محترف في أسواق العملات الرقمية، متخصص في استراتيجيات التداول القائمة على أنماط الشموع اليابانية. مهمتك هي تحليل صورة الرسم البياني المقدمة وتقديم توصية تداول كاملة.
+            const systemInstruction = `أنت خبير تحليل فني محترف في أسواق العملات الرقمية، متخصص في استراتيجيات التداول القائمة على أنماط الشموع اليابانية. مهمتك هي تحليل صورة الرسم البياني المقدمة وتقديم توصية تداول كاملة. قم بتعبئة جميع الحقول في مخطط JSON المقدم بدقة.`;
 
-يجب أن تكون إجابتك بتنسيق JSON حصريًا، بالشكل التالي:
-{
-  "pattern": "اسم نمط الشموع الرئيسي الذي تم تحديده (مثال: مطرقة، ابتلاع هبوطي).",
-  "trend": "الاتجاه العام المتوقع بناءً على النمط (صعودي، هبوطي, محايد).",
-  "recommendation": "التوصية الصريحة (شراء، بيع, احتفاظ).",
-  "entryPrice": "سعر الدخول المقترح. كن محددًا قدر الإمكان (مثال: 'عند سعر الإغلاق الحالي' أو 'عند اختراق مستوى 1.2345').",
-  "stopLoss": "سعر وقف الخسارة لحماية رأس المال.",
-  "takeProfit": "سعر جني الأرباح كهدف أول.",
-  "detailedAnalysis": "تحليل تفصيلي يشرح منطق التوصية، مع الإشارة إلى النمط، حجم التداول (إن وجد)، ومؤشرات أخرى ظاهرة.",
-  "notes": "ملاحظات هامة وتحذيرات خاصة بهذه التوصية فقط (مثال: 'التوصية عالية المخاطر' أو 'تأكد من وجود تأكيد إضافي'). يجب أن تكون الملاحظة مرتبطة مباشرة بالتحليل المقدم ولا تتضمن إخلاء مسؤولية عام."
-}`;
+            const responseSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    pattern: { type: Type.STRING, description: 'اسم نمط الشموع الرئيسي الذي تم تحديده (مثال: مطرقة، ابتلاع هبوطي).' },
+                    trend: { type: Type.STRING, description: 'الاتجاه العام المتوقع بناءً على النمط (صعودي، هبوطي, محايد).' },
+                    recommendation: { type: Type.STRING, description: 'التوصية الصريحة (شراء، بيع, احتفاظ).' },
+                    entryPrice: { type: Type.STRING, description: "سعر الدخول المقترح. كن محددًا قدر الإمكان (مثال: 'عند سعر الإغلاق الحالي' أو 'عند اختراق مستوى 1.2345')." },
+                    stopLoss: { type: Type.STRING, description: 'سعر وقف الخسارة لحماية رأس المال.' },
+                    takeProfit: { type: Type.STRING, description: 'سعر جني الأرباح كهدف أول.' },
+                    detailedAnalysis: { type: Type.STRING, description: 'تحليل تفصيلي يشرح منطق التوصية، مع الإشارة إلى النمط، حجم التداول (إن وجد)، ومؤشرات أخرى ظاهرة.' },
+                    notes: { type: Type.STRING, description: "ملاحظات هامة وتحذيرات خاصة بهذه التوصية فقط (مثال: 'التوصية عالية المخاطر' أو 'تأكد من وجود تأكيد إضافي'). يجب أن تكون الملاحظة مرتبطة مباشرة بالتحليل المقدم ولا تتضمن إخلاء مسؤولية عام." },
+                },
+                 required: ["pattern", "trend", "recommendation", "entryPrice", "stopLoss", "takeProfit", "detailedAnalysis", "notes"]
+            };
 
             const response = await ai.models.generateContent({
               model: 'gemini-2.5-flash',
-              contents: { parts: [imagePart, {text: "حلل الصورة بناء على التعليمات وقدم توصية تداول كاملة."}] },
-              config: { systemInstruction: systemInstruction, responseMimeType: "application/json" }
+              contents: { parts: [imagePart, {text: "حلل صورة الرسم البياني هذه وقدم توصية تداول كاملة."}] },
+              config: {
+                  systemInstruction: systemInstruction,
+                  responseMimeType: "application/json",
+                  responseSchema: responseSchema
+              }
             });
             
             const parsedResult = JSON.parse(response.text);
@@ -390,7 +397,7 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
             }, 500);
 
         } catch (err) {
-            console.error(err);
+            console.error("Analysis Error:", err);
             setError("حدث خطأ أثناء تحليل الصورة. الرجاء المحاولة مرة أخرى.");
         } finally {
             setLoading(false);
@@ -573,16 +580,25 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
         setStatusMessage("جاري التحقق من معاملتك على شبكة البلوك تشين...");
 
         try {
-            const systemInstruction = `أنت نظام آلي للتحقق من معاملات البلوك تشين (TRC20). مهمتك هي التحقق من صحة بيانات المعاملة المقدمة. تحقق من أن "معرف المعاملة" (TxID) يبدو صحيحًا (عادة 64 حرفًا سداسيًا عشريًا) وأن البريد الإلكتروني بتنسيق صحيح. قم بمحاكاة التحقق من المعاملة. إذا كانت البيانات تبدو صحيحة، اعتبرها ناجحة. إذا كان معرف المعاملة قصيرًا جدًا أو غير صالح، فاعتبرها فاشلة. يجب أن تكون إجابتك بتنسيق JSON حصريًا، بالشكل التالي: {"isValid": boolean, "reason": "رسالة توضيحية باللغة العربية"}. أمثلة للأسباب: "تم التحقق من المعاملة بنجاح"، "معرف المعاملة يبدو غير صالح"، "الرجاء التأكد من إدخال معرف المعاملة الصحيح".`;
-
+            const systemInstruction = `أنت نظام آلي للتحقق من معاملات البلوك تشين (TRC20). مهمتك هي التحقق من صحة بيانات المعاملة المقدمة. تحقق من أن "معرف المعاملة" (TxID) يبدو صحيحًا (عادة 64 حرفًا سداسيًا عشريًا) وأن البريد الإلكتروني بتنسيق صحيح. قم بمحاكاة التحقق من المعاملة. إذا كانت البيانات تبدو صحيحة، اعتبرها ناجحة. إذا كان معرف المعاملة قصيرًا جدًا أو غير صالح، فاعتبرها فاشلة. يجب أن تكون إجابتك بتنسيق JSON حصريًا.`;
             const prompt = `الرجاء التحقق من المعاملة بالبيانات التالية: البريد الإلكتروني: ${email}, معرف المعاملة: ${txId}`;
+
+            const responseSchema = {
+                type: Type.OBJECT,
+                properties: {
+                    isValid: { type: Type.BOOLEAN, description: 'True if the email and TxID format appear valid, otherwise false.' },
+                    reason: { type: Type.STRING, description: 'A user-facing message in Arabic explaining the result (e.g., "تم التحقق بنجاح", "معرف المعاملة يبدو غير صالح").' },
+                },
+                required: ["isValid", "reason"]
+            };
 
             const response = await ai.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: prompt,
                 config: {
                     systemInstruction: systemInstruction,
-                    responseMimeType: "application/json"
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
                 }
             });
 
