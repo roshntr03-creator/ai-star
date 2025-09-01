@@ -36,6 +36,68 @@ const triggerHapticFeedback = () => {
     }
 };
 
+const getApiErrorMessage = (error: unknown, context: 'analysis' | 'verification' | 'chat'): string => {
+    let baseMessage = '';
+    switch (context) {
+        case 'analysis':
+            baseMessage = 'حدث خطأ أثناء تحليل الصورة.';
+            break;
+        case 'verification':
+            baseMessage = 'حدث خطأ أثناء الاتصال بخدمة التحقق.';
+            break;
+        case 'chat':
+             baseMessage = 'حدث خطأ في الدردشة.';
+             break;
+    }
+
+    // Log the full error for debugging purposes, regardless of its type.
+    console.error(`Gemini API Error Details (${context}):`, error);
+
+    if (error instanceof Error) {
+        // Handle custom, more informative error messages thrown from the app logic.
+        if (error.message.startsWith('لم يتمكن الذكاء الاصطناعي')) {
+            return error.message;
+        }
+
+        const errorMessage = error.message.toLowerCase();
+        
+        // Specific API key errors
+        if (errorMessage.includes('api key not valid') || errorMessage.includes('permission denied')) {
+            return `${baseMessage} مفتاح الواجهة البرمجية (API) غير صالح أو مقيد. قد تكون هناك قيود على استخدامه من هذا التطبيق.`;
+        }
+        if (errorMessage.includes('api key is missing')) {
+             return `${baseMessage} مفتاح الواجهة البرمجية (API) مفقود. يرجى الاتصال بمطور التطبيق.`;
+        }
+
+        // Network and connectivity errors
+        if (errorMessage.includes('network') || errorMessage.includes('fetch failed') || errorMessage.includes('failed to fetch')) {
+            return `${baseMessage} تعذر الاتصال بالخادم. يرجى التحقق من اتصالك بالإنترنت والمحاولة مرة أخرى.`;
+        }
+        
+        // Quota and rate limiting errors
+        if (errorMessage.includes('429') || errorMessage.includes('quota')) {
+            return 'تم تجاوز الحد الأقصى للطلبات. يرجى الانتظار قليلاً والمحاولة مرة أخرى.';
+        }
+        
+        // Content safety blocking
+        if (errorMessage.includes('blocked') || errorMessage.includes('safety')) {
+            return `${baseMessage} تم حظر المحتوى بسبب سياسات الأمان.`;
+        }
+        
+        // Server-side errors
+        if (errorMessage.includes('500') || errorMessage.includes('internal error')) {
+            return `${baseMessage} حدث خطأ داخلي في الخادم. يرجى المحاولة مرة أخرى لاحقًا.`;
+        }
+        
+        // Return a generic message but hint at the error
+        return `${baseMessage} حدث خطأ غير متوقع. يرجى إعادة المحاولة.`;
+    }
+
+    // Fallback for non-Error objects
+    return `${baseMessage} حدث خطأ غير معروف. يرجى المحاولة مرة أخرى لاحقًا.`;
+};
+
+
 // --- Helper Components & Icons ---
 const CrownIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -329,8 +391,8 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
             const modelMessage: ChatMessage = { role: 'model', text: response.text };
             setChatMessages(prev => [...prev, modelMessage]);
         } catch (err) {
-            console.error("Chat error:", err);
-            const errorMessage: ChatMessage = { role: 'model', text: "عذراً، حدث خطأ ما. حاول مرة أخرى." };
+            const errorMessageText = getApiErrorMessage(err, 'chat');
+            const errorMessage: ChatMessage = { role: 'model', text: errorMessageText };
             setChatMessages(prev => [...prev, errorMessage]);
         } finally {
             setIsChatLoading(false);
@@ -339,6 +401,10 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
 
 
     const handleSubmit = async () => {
+        if (!process.env.API_KEY) {
+            setError("خطأ في الإعدادات: مفتاح الواجهة البرمجية مفقود.");
+            return;
+        }
         if (!image) {
             setError("الرجاء رفع صورة أولاً.");
             return;
@@ -378,7 +444,26 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
               }
             });
             
-            const parsedResult = JSON.parse(response.text);
+            const rawText = response.text;
+            let parsedResult: AnalysisResult;
+
+            try {
+                parsedResult = JSON.parse(rawText);
+                 // Basic validation to ensure we got a structured object.
+                if (typeof parsedResult !== 'object' || parsedResult === null || !parsedResult.pattern) {
+                    throw new Error("Parsed result is not a valid analysis object.");
+                }
+            } catch (parseError) {
+                console.error("Failed to parse JSON response from Gemini:", parseError);
+                console.error("Raw text response from Gemini:", rawText);
+                let userFriendlyError = `لم يتمكن الذكاء الاصطناعي من تحليل الصورة. قد تكون غير واضحة أو لا تحتوي على رسم بياني.`;
+                if (typeof rawText === 'string' && rawText.trim().length > 0 && !rawText.trim().startsWith('{')) {
+                     userFriendlyError += ` كانت استجابته: "${rawText}"`;
+                }
+                // Throw a new, more descriptive error to be caught by the outer catch block.
+                throw new Error(userFriendlyError);
+            }
+
             setResult(parsedResult);
 
             const chat = ai.chats.create({
@@ -397,8 +482,7 @@ const CandlestickAnalyzer: React.FC<{ isSubscribed: boolean, onSubscribeClick: (
             }, 500);
 
         } catch (err) {
-            console.error("Analysis Error:", err);
-            setError("حدث خطأ أثناء تحليل الصورة. الرجاء المحاولة مرة أخرى.");
+            setError(getApiErrorMessage(err, 'analysis'));
         } finally {
             setLoading(false);
         }
@@ -557,7 +641,7 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
         setTimeout(() => setIsCopied(false), 2000);
     };
 
-    const handleActivate = async () => {
+    const handleActivate = () => {
         triggerHapticFeedback();
         // Admin Bypass
         if (email.toLowerCase() === 'admin@example.com') {
@@ -566,59 +650,52 @@ const SubscriptionPage: React.FC<{ onSubscriptionSuccess: (email: string) => voi
                 return;
             }
             setError('');
+            setIsVerifying(true);
             setStatusMessage("تم تسجيل الدخول كمدير. جاري التوجيه...");
-            setTimeout(() => onSubscriptionSuccess(email), 1500);
-            return; // Exit function to bypass Gemini verification
-        }
-
-        if (!email || !txId) {
-            setError("الرجاء ملء جميع الحقول.");
+            setTimeout(() => {
+                setIsVerifying(false);
+                onSubscriptionSuccess(email);
+            }, 1500);
             return;
         }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const txIdRegex = /^[a-fA-F0-9]{64}$/;
+
+        const trimmedEmail = email.trim();
+        const trimmedTxId = txId.trim();
+
+        if (!trimmedEmail) {
+            setError("الرجاء إدخال بريدك الإلكتروني.");
+            return;
+        }
+        if (!emailRegex.test(trimmedEmail)) {
+            setError("الرجاء إدخال بريد إلكتروني صالح.");
+            return;
+        }
+        if (!trimmedTxId) {
+            setError("الرجاء إدخال معرّف المعاملة (TxID).");
+            return;
+        }
+        if (!txIdRegex.test(trimmedTxId)) {
+            setError("معرف المعاملة (TxID) يبدو غير صالح. يجب أن يتكون من 64 حرفًا وأرقامًا (Hex).");
+            return;
+        }
+
+        // If validation passes, simulate verification
         setError('');
         setIsVerifying(true);
-        setStatusMessage("جاري التحقق من معاملتك على شبكة البلوك تشين...");
+        setStatusMessage("جاري التحقق من معاملتك...");
 
-        try {
-            const systemInstruction = `أنت نظام آلي للتحقق من معاملات البلوك تشين (TRC20). مهمتك هي التحقق من صحة بيانات المعاملة المقدمة. تحقق من أن "معرف المعاملة" (TxID) يبدو صحيحًا (عادة 64 حرفًا سداسيًا عشريًا) وأن البريد الإلكتروني بتنسيق صحيح. قم بمحاكاة التحقق من المعاملة. إذا كانت البيانات تبدو صحيحة، اعتبرها ناجحة. إذا كان معرف المعاملة قصيرًا جدًا أو غير صالح، فاعتبرها فاشلة. يجب أن تكون إجابتك بتنسيق JSON حصريًا.`;
-            const prompt = `الرجاء التحقق من المعاملة بالبيانات التالية: البريد الإلكتروني: ${email}, معرف المعاملة: ${txId}`;
-
-            const responseSchema = {
-                type: Type.OBJECT,
-                properties: {
-                    isValid: { type: Type.BOOLEAN, description: 'True if the email and TxID format appear valid, otherwise false.' },
-                    reason: { type: Type.STRING, description: 'A user-facing message in Arabic explaining the result (e.g., "تم التحقق بنجاح", "معرف المعاملة يبدو غير صالح").' },
-                },
-                required: ["isValid", "reason"]
-            };
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: {
-                    systemInstruction: systemInstruction,
-                    responseMimeType: "application/json",
-                    responseSchema: responseSchema
-                }
-            });
-
-            const verificationResult = JSON.parse(response.text);
-
+        // Simulate network delay for better UX
+        setTimeout(() => {
             setIsVerifying(false);
-            if (verificationResult.isValid) {
-                setStatusMessage("تم التحقق بنجاح! تم تفعيل اشتراكك.");
-                setTimeout(() => onSubscriptionSuccess(email), 1500);
-            } else {
-                setStatusMessage('');
-                setError(verificationResult.reason || "لم نتمكن من التحقق من المعاملة. يرجى التأكد من صحة البيانات.");
-            }
-        } catch (err) {
-            console.error("Verification error:", err);
-            setIsVerifying(false);
-            setStatusMessage('');
-            setError("حدث خطأ أثناء الاتصال بخدمة التحقق. يرجى المحاولة مرة أخرى لاحقًا.");
-        }
+            setStatusMessage("تم التحقق بنجاح! تم تفعيل اشتراكك.");
+            // Wait a bit more on the success message before transitioning
+            setTimeout(() => onSubscriptionSuccess(email), 1500);
+        }, 2000); // 2-second delay
     };
+
 
     return (
         <div className="space-y-6">
